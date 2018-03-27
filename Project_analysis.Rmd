@@ -1,0 +1,168 @@
+---
+title: "Movement Data Analysis - Peer Assignment"
+author: "Grzegorz Olszewski"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(caret)
+library(dplyr)
+library(ggplot2)
+library(randomForest)
+```
+
+## Introduction
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+We analyse data was from this project `http://groupware.les.inf.puc-rio.br/har`.
+
+Output variable was `classe` which tell as the way they make exercise.
+
+We will do following steps in this report:
+
+1. Preprocessing data, splitting for dev,train set
+2. Selecting variables for model
+3. Make a few type of models
+4. Do some improvement (boosting, bagging)
+5. Look on the performance, diagnostic for models
+
+
+Let's load data for analysis.
+
+```{r load}
+
+training <- read.csv("pml-training.csv")
+test.set <- read.csv("pml-testing.csv")
+
+
+
+```
+
+## Data cleaning
+
+At first let's delete some variables that have missing values in them. Also let's delete first 6 columns which don't influence on output (some ID's and timestamp). Also I want to delete whole variable connected with measure like average, variance, etc.
+
+```{r cleaning}
+
+training <- training %>% 
+  select_if(function(x) !any(is.na(x))) %>% 
+  select(-c(1:6)) %>% 
+  select(-starts_with("avg_"),
+           -starts_with("var_"),
+           -starts_with("stddev_"),
+           -starts_with("max_"),
+           -starts_with("min_"),
+           -starts_with("amplitude_"),
+           -starts_with("kurtosis_"),
+           -starts_with("skewness_"))
+
+
+
+```
+
+Right now let's take some observations from training set for dev set (tuning parameter). 
+
+```{r split}
+
+set.seed(123456)
+inTrain = createDataPartition(training$classe, p = 3/4)[[1]]
+
+train.set <- training[ inTrain,]
+test.set <- training[ - inTrain,]
+
+```
+
+
+Let's do three models:  Simply decision tree, Random Forest and  GBM model.
+
+```{r build}
+
+# rf.model = train(, method = "rf", prox = TRUE,
+#                  trControl = trainControl(method = "repeatedcv", number = 2, repeats = 1), tunelength = 1)
+
+rf.model <- randomForest(classe ~ . , data = train.set)
+
+                 
+rpart.model = train(classe ~ . , data = train.set, method = "rpart",
+                 trControl = trainControl(method = "cv", number = 5))
+
+gbm.model = train(classe ~ . , data = train.set, method = "gbm",
+                 trControl = trainControl(method = "cv", number = 5),  verbose = FALSE)
+
+              
+
+
+
+```
+
+
+
+
+Let's look on performance of each model:
+
+Decision tree:
+```{r tree1}
+
+print(rpart.model)
+
+```
+
+
+```{r tree}
+
+pred.tree <- predict(rpart.model, test.set)
+
+confusionMatrix(table(pred.tree, test.set$classe))
+
+
+
+```
+
+As we can see for decision tree we get accuracy over 50%, which is not best performance at all.
+
+With random forest we get:
+
+```{r rf1}
+
+print(rf.model)
+
+```
+
+
+```{r rf}
+
+pred.rf <- predict(rf.model, test.set)
+
+confusionMatrix(table(pred.rf, test.set$classe))
+
+
+```
+
+The accuracy and other metrics look very good. We get accuracy nearly 100%, so we can use that model for usage.
+
+
+Gradient Boosting Model:
+
+```{r gbm1}
+
+print(gbm.model)
+
+
+```
+
+
+
+```{r gbm}
+
+pred.gbm <- predict(gbm.model, test.set)
+
+confusionMatrix(table(pred.gbm, test.set$classe))
+
+
+```
+
+This model perform a little worse than random forest.
+To summerize, the best option is to use random forest as final model.
